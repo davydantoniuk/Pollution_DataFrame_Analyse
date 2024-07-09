@@ -1,0 +1,164 @@
+---
+title: "Pollution_Dataframe_Analyse"
+author: "Antoniuk Davyd"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r message=FALSE,warning=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ggcorrplot)
+library(tidyverse)
+library(DT)
+library(plotly)
+```
+
+**Zadanie 1**
+
+```{r message=FALSE,warning=FALSE}
+dane <- read_excel("Pollution_Dataframe.xlsx")
+print("Braki danych:")
+colSums(is.na(dane))
+dane <- dane %>%
+  mutate(Year = as.factor(Year))
+print(paste("Typ zmiennych Year: ",typeof(dane$Year)))
+```
+
+
+**Zadanie 2**
+
+```{r message=FALSE,warning=FALSE}
+european_population_2000 <- dane %>%
+  filter(Year == 2000, Continent == "Europe")
+ggplot(european_population_2000, aes(x = Population, y = Country)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Populacja krajów europejskich w 2000 r.", x = "Kraj", y = "Populacja")+
+  scale_x_continuous(labels = scales::comma)
+```
+
+
+**Zadanie 3**
+
+```{r message=FALSE,warning=FALSE}
+dane_numeryczne <- dane %>%
+  select(Population, Avg_Temp, CO2_emissions, Water_resources, Renewable_energy, Annual_precipitation, Cancer_cases)
+macierz_korelacji <- round(cor(dane_numeryczne),2)
+p_mat = cor_pmat(macierz_korelacji)
+ggcorrplot(macierz_korelacji,lab = TRUE ,p.mat = p_mat,title="Macierz Korelacji")
+```
+
+<h1 style="text-align:left; font-size:14px; font-weight:500;">
+<p>
+  Silna pozytywna korelacja o wartości 0,87 między przypadkami nowotworów a emisją CO2 wskazuje na istnienie wyraźnego związku między zanieczyszczeniem powietrza i występowaniem przypadków nowotworów.
+<br>
+</p>
+  Słaba negatywna korelacja o wartości -0,37 między zużyciem energii odnawialnej a emisją CO2 oznacza, że zwiększenie wykorzystania źródeł energii odnawialnej prowadzi do zmniejszenia emisji CO2.
+</h1>
+
+**Zadanie 4**
+
+```{r message=FALSE,warning=FALSE}
+boxplot_plot <- ggplot(dane, aes(x = Continent, y = Avg_Temp)) +
+  geom_boxplot() +
+  labs(title = "Rozkład średnich temperatur dla poszczególnych kontynentów",
+       x = "Kontynent",
+       y = "Średnia temperatura (°C)")
+boxplot_plot
+```
+
+<h1 style="text-align:center; font-size:18px; font-weight:bold;">Tablica obserwacji</h1>
+```{r message=FALSE,warning=FALSE}
+outliers <- dane %>%
+  group_by(Continent) %>%
+  mutate(
+    Q1 = quantile(Avg_Temp, 0.25),
+    Q3 = quantile(Avg_Temp, 0.75),
+    IQR = Q3 - Q1,
+    Lower = Q1 - 1.5 * IQR,
+    Upper = Q3 + 1.5 * IQR,
+    IsOutlier = Avg_Temp < Lower | Avg_Temp > Upper
+  ) %>% 
+  select(Year,Country,Continent,Avg_Temp,IsOutlier)
+DT::datatable(outliers%>% filter(IsOutlier),options = list(pageLength = 25))
+
+#library(rstatix)
+# outliers_df <- data.frame()
+# 
+# # Loop through each continent to identify outliers
+# for (continent in unique(dane$Continent)) {
+#   outliers_continent <- dane %>%
+#     filter(Continent == continent) %>%
+#     identify_outliers(analysis = Avg_Temp)
+#   outliers_df <- rbind(outliers_df, outliers_continent)
+# }
+# 
+# outliers_df
+```
+
+**Zadanie 5**
+
+```{r message=FALSE,warning=FALSE}
+dane_2015 <- dane %>% 
+  filter(Year == 2015)
+
+wykres_interaktywny <- ggplot(dane_2015, aes(x = Annual_precipitation, y = Avg_Temp, size = Population, text = paste("Kraj: ", Country),color=Continent)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Zależność między średnią temperaturą a roczną sumą opadów (2015)",
+       x = "Roczna suma opadów",
+       y = "Średnia temperatura") +
+  scale_size_continuous(name = "Populacja", labels = scales::comma) +
+  theme_minimal()
+ggplotly(wykres_interaktywny, tooltip = "text")
+```
+
+**Zadanie 6**
+
+```{r message=FALSE,warning=FALSE}
+year <- 2000
+dane6 <- dane %>% 
+  filter(Year==year) %>% 
+  select(Country, Continent, Population)
+dane6$Population <- dane6$Population / 100000
+dane6 <- data.frame(dane6)
+
+empty_bar <- 4
+to_add <- data.frame(matrix(NA, empty_bar * nlevels(dane6$Continent), ncol(dane6)))
+colnames(to_add) <- colnames(dane6)
+to_add$Continent <- rep(levels(dane6$Continent), each = empty_bar)
+dane6 <- rbind(dane6, to_add)
+dane6 <- dane6 %>% arrange(Continent)
+dane6$id <- seq(1, nrow(dane6))
+
+label_dane <- dane6
+number_of_bar <- nrow(label_dane)
+angle <- 90 - 360 * (label_dane$id - 0.5) / number_of_bar
+label_dane$hjust <- ifelse(angle < -90, 1, 0)
+label_dane$angle <- ifelse(angle < -90, angle + 180, angle)
+
+p <- ggplot(dane6, aes(x = as.factor(id), y = Population, fill = Continent)) +
+  geom_bar(stat = "identity", alpha = 0.5) +
+  scale_y_log10() +  
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    plot.margin = margin(t = 0, r = -1.5, b = -1.5, l = -1.5, unit = "cm"),  
+    plot.title = element_text(hjust = 0.5, margin = margin(b = -40),size=16)  
+  ) +
+  coord_polar() +
+  geom_text(data = label_dane, aes(x = id, y = Population +10, label = Country, hjust = hjust), color = "black",     alpha = 0.6, size = 3, angle = label_dane$angle,inherit.aes = F)+
+  ggtitle(paste("Populacja Krajów w ",year,"roku"))
+p
+# ggsave(p, file="output12.png", width=10, height=10)
+#https://r-graph-gallery.com/circular-barplot.html
+```
+
+
+
